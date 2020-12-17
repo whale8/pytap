@@ -1,6 +1,6 @@
 import os
 import re
-import glob
+from glob import glob
 from pathlib import Path
 import curses
 from curses import wrapper
@@ -9,16 +9,22 @@ import locale
 locale.setlocale(locale.LC_ALL, '')
 # files = os.listdir('~/Music/*/*wav')
 home = str(Path.home())  # ~は使えない
-files = glob.glob(home+'/Music/**/*.wav', recursive=True)
+
+#files = glob(home + '(/Music/**/*)(wav|flac)', recursive=True)
+#files = glob(home + '/Music/**/*flac', recursive=True)
+
+files = [p for p in glob(home + '/Music/**/*', recursive=True)
+         if re.search('/*\.(flac|wav)', str(p))]
+
 
 def main(stdscr):
     # Start colors in curses
     curses.start_color()
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
-    highlight_text = curses.color_pair(1) # 上の行のpair idを使う
+    highlight_text = curses.color_pair(1)
     normal_text = curses.A_NORMAL
 
     stdscr.clear()
@@ -28,22 +34,30 @@ def main(stdscr):
 
     curses.curs_set(0)  # カーソル
     max_row, max_col = stdscr.getmaxyx()
-    
+    l_width = max_col//3
+    r_width = max_col - l_width
+    height = max_row - 3
+
+    # border, 中央の間仕切り用のwindow
+    border = curses.newwin(height, l_width, 1, 0)
+    border.bkgd(curses.color_pair(2))
+    border.border(" ", 0, " ", " ", " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
+    border.refresh()
+
     # left, artist
-    left_win = curses.newwin(max_row-2, max_col//2 - 1, 1, 0)
-    # left_win.border(0, 0, 0, 0)
+    left_win = curses.newwin(height, l_width - 1, 1, 0)
     left_win.clear()
     left_win.addstr(0, 0, "{}, {}".format(max_row, max_col),
                     curses.color_pair(3))
     for i, f in enumerate(files):
-        left_win.addstr(i+1, 1,
+        left_win.addstr(i+1, 0,
                         "{}".format(f))
 
     left_win.refresh()
     left_win.getkey()
 
     # right, track
-    right_win = curses.newwin(max_row-2, max_col//2 - 1 , 1, max_col//2)
+    right_win = curses.newwin(height, r_width, 1, l_width)
     right_win.clear()
     right_win.refresh()
     right_win.getkey()
