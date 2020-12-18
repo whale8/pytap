@@ -6,15 +6,34 @@ from mutagen.flac import FLAC
 from threading import Thread
 import time
 
+# alsa message handling
+from ctypes import *
+from contextlib import contextmanager
 
-# 音楽再生にはmultiprocessingのほうが適しているか？
-# p.terminateしても残り続けるの邪魔くさい気がする
+
+ERROR_HANDLER_FUNC = CFUNCTYPE(None, c_char_p, c_int, c_char_p, c_int, c_char_p)
+
+def py_error_handler(filename, line, function, err, fmt):
+    pass
+
+c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
+
+@contextmanager
+def noalsaerr():
+    asound = cdll.LoadLibrary('libasound.so')
+    asound.snd_lib_error_set_handler(c_error_handler)
+    yield
+    asound.snd_lib_error_set_handler(None)
+
+
+
 class Song(Thread):
     def __init__(self, f, *args, **kwargs):
         self.seg = AudioSegment.from_file(f)
         self.__is_paused = True
-        self.p = PyAudio()
-        #print(self.seg.frame_rate)
+        with noalsaerr():
+            self.p = PyAudio()
+
         Thread.__init__(self, *args, **kwargs)
         self.start()
 
@@ -25,10 +44,10 @@ class Song(Thread):
         self.__is_paused = False
 
     def __get_stream(self):
-        return  self.p.open(format=self.p.get_format_from_width(self.seg.sample_width),
-                            channels=self.seg.channels,
-                            rate=self.seg.frame_rate,
-                            output=True)
+        return self.p.open(format=self.p.get_format_from_width(self.seg.sample_width),
+                           channels=self.seg.channels,
+                           rate=self.seg.frame_rate,
+                           output=True)
 
     def run(self):
         stream = self.__get_stream()

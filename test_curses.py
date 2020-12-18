@@ -2,9 +2,13 @@ import os
 import re
 from glob import glob
 from pathlib import Path
+import time
 import curses
 from curses import wrapper
 import curses.ascii
+
+from play import Song
+
 import locale
 locale.setlocale(locale.LC_ALL, '')
 # files = os.listdir('~/Music/*/*wav')
@@ -52,6 +56,11 @@ def main(stdscr):
     for i, f in enumerate(files):
         left_win.addstr(i+1, 0,
                         "{}".format(f))
+
+    song = Song(files[-1])
+    song.play()
+    #songLength = song.seg.duration_seconds
+    #time.sleep(songLength - 1)
 
     left_win.refresh()
     left_win.getkey()
