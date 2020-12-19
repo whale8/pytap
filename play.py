@@ -7,7 +7,7 @@ from threading import Thread
 import time
 
 # alsa message handling
-from ctypes import *
+from ctypes import (CFUNCTYPE, c_char_p, c_int, cdll) 
 from contextlib import contextmanager
 
 
@@ -68,6 +68,7 @@ if __name__ == "__main__":
     file_name = home + "/Music/大貫妙子＆坂本龍一/UTAU/03 - 大貫妙子＆坂本龍一 - ３びきのくま.flac"
     tags = FLAC(file_name)
     print(tags)
+    print(tags['title'][-1])
     #seg = pydub.AudioSegment.from_file(file_name, format='flac')
     #play(seg)
     
@@ -79,5 +80,7 @@ if __name__ == "__main__":
     # I have a bunch of active threads piling up
     song = Song(file_name)
     song.play()
+    time.sleep(10)
+    song.pause()
     songLength = song.seg.duration_seconds
     time.sleep(songLength - 1)
