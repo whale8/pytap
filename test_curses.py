@@ -22,20 +22,12 @@ artists = set(FLAC(f)['artist'][-1] for f in files)
 
 
 def main(stdscr):
-    # Start colors in curses
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)
-    curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
-
     highlight_text = curses.color_pair(1)
     normal_text = curses.A_NORMAL
 
     #stdscr.clear()
     stdscr.bkgd(curses.color_pair(1))  # 全体の背景
     
-
-    curses.curs_set(0)  # カーソル
     max_row, max_col = stdscr.getmaxyx()
     l_width = max_col//3
     r_width = max_col - l_width
@@ -46,7 +38,6 @@ def main(stdscr):
     border.bkgd(curses.color_pair(2))
     border.border(" ", 0, " ", " ", " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
     
-
     # left, artist
     left_win = curses.newwin(height, l_width - 1, 1, 0)
     #left_win.clear()
@@ -59,23 +50,59 @@ def main(stdscr):
     #songLength = song.seg.duration_seconds
     #time.sleep(songLength - 1)
 
-
     # right, track
     right_win = curses.newwin(height, r_width, 1, l_width)
-    #right_win.clear()
-
+    
     stdscr.refresh()
     border.refresh()
+    left_win.move(0, 0)
     left_win.refresh()
     right_win.refresh()
 
     while True:
+
+        cursor_y, cursor_x = stdscr.getyx()
+        is_resized = curses.is_term_resized(max_row, max_col)
+        if is_resized:
+            max_row, max_col = stdscr.getmaxyx()
+            l_width = max_col//3
+            r_width = max_col - l_width
+            height = max_row - 3
+            stdscr.resize(max_row, max_col)
+            border.resize(height, l_width)
+            left_win.resize(height, l_width - 1)
+            right_win.resize(height, r_width)
+            right_win.mvwin(1, l_width)
+
+            stdscr.clear()
+            border.clear()
+            left_win.clear()
+            right_win.clear()
+            border.border(" ", 0, " ", " ", " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
+
         key = stdscr.getch()
 
         if key == ord('q'):
             break
+        elif key == ascii.SO or key == curses.KEY_DOWN:
+            cursor_y = min(max_row - 1, cursor_y + 1)
+        elif key == ascii.DLE or key == curses.KEY_UP:
+            cursor_y = max(0, cursor_y - 1)
 
+        stdscr.move(cursor_y, cursor_x)
+        left_win.addstr(0, 0, f"{cursor_y},{cursor_x}")
+        left_win.addstr(1, 0, f"{max_row},{max_col}")
+        
         time.sleep(sleep_time)
+
+        if stdscr.is_wintouched():
+            stdscr.refresh()
+        if border.is_wintouched():
+            border.refresh()
+        if left_win.is_wintouched():
+            left_win.refresh()
+        if right_win.is_wintouched():
+            right_win.refresh()
 
     song.pause()
     curses.echo()
@@ -84,4 +111,11 @@ def main(stdscr):
 
 if __name__ == "__main__":
     curses.initscr()  # これを呼んだ後じゃないといろいろ使えない
+
+    # Start colors in curses
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)
+    curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
+
     wrapper(main)
