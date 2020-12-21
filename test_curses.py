@@ -4,6 +4,7 @@ from glob import glob
 from pathlib import Path
 import time
 import curses
+import _curses
 from curses import wrapper
 from curses import ascii
 from mutagen.flac import FLAC
@@ -19,6 +20,22 @@ files = [p for p in glob(home + '/Music/**/*', recursive=True)
          if re.search('/*\.(flac|wav)\Z', str(p))]
 artists = set(FLAC(f)['artist'][-1] for f in files)
 
+# python 3.7 移行はdictも順序を保持する
+tree1 = {FLAC(f)['artist'][-1]: FLAC(f)['album'][-1] for f in files}
+tree2 = {FLAC(f)['album'][-1]: FLAC(f)['title'][-1] for f in files}
+
+tree2 = dict()
+for f in files:
+    tree2.setdefault(FLAC(f)['album'][-1], []).append(FLAC(f)['title'][-1])
+
+print(tree1)
+print(tree2)
+
+class CMenu:
+
+    def __init__(self, title, h, w, y, x):
+        self.window = curses.newwin(h, w, y, x)
+        self.window.refresh()
 
 
 def main(stdscr):
@@ -41,7 +58,7 @@ def main(stdscr):
     # left, artist
     left_win = curses.newwin(height, l_width - 1, 1, 0)
     #left_win.clear()
-    for i, artist in enumerate(artists):
+    for i, artist in enumerate(tree1.keys()):
         left_win.addstr(i+1, 0,
                         "{}".format(artist))
 
@@ -52,12 +69,16 @@ def main(stdscr):
 
     # right, track
     right_win = curses.newwin(height, r_width, 1, l_width)
+    for i, album in enumerate(tree2.keys()):
+        right_win.addstr(i+1, 0,
+                         "{}".format(album))
     
     stdscr.refresh()
     border.refresh()
     left_win.move(0, 0)
     left_win.refresh()
     right_win.refresh()
+    windows_list = [stdscr, border, left_win, right_win]
 
     while True:
 
@@ -113,9 +134,13 @@ if __name__ == "__main__":
     curses.initscr()  # これを呼んだ後じゃないといろいろ使えない
 
     # Start colors in curses
+    curses.noecho()
+    curses.cbreak()
     curses.start_color()
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)
     curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     wrapper(main)
+
+    
