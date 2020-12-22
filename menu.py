@@ -5,41 +5,39 @@ import curses
 
 class CursesMenu:
 
-    def __init__(self, menu_options):
-        self.screen = curses.initscr()
+    def __init__(self, menu_options, h, w, y, x):
+        self.screen = curses.newwin(h, w, y, x)
         self.menu_options = menu_options
         self.selected_option = 0
-        self._previously_selected_option = None
         self.running = True
 
-        #init curses and curses input
+        # init curses and curses input
         curses.noecho()
         curses.cbreak()
         curses.start_color()
-        curses.curs_set(0) #Hide cursor
+        curses.curs_set(0)  # Hide cursor
         self.screen.keypad(1)
 
-        #set up color pair for highlighted option
+        # set up color pair for highlighted option
         curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
         self.hilite_color = curses.color_pair(1)
         self.normal_color = curses.A_NORMAL
-        
+        self.screen.border(0)
+
     def prompt_selection(self, parent=None):
         """
         if parent is None:
             lastoption = "Exit"
         else:
             lastoption = "Return to previous menu ({})".format(parent['title'])
-        """ 
+        """
         option_count = len(self.menu_options['options'])
         input_key = None
         ENTER_KEY = ord('\n')
         while input_key != ENTER_KEY:
-            if self.selected_option != self._previously_selected_option:
-                self._previously_selected_option = self.selected_option
 
             self.screen.border(0)
-            #self._draw_title()
+            # self._draw_title()
             for option in range(option_count):
                 if self.selected_option == option:
                     self._draw_option(option, self.hilite_color)
@@ -56,13 +54,12 @@ class CursesMenu:
                                    "{:2} - {}".format(option_count+1,
                                                       lastoption), self.normal_color)
             """
-            
+
             max_y, max_x = self.screen.getmaxyx()
             if input_key is not None:
                 self.screen.addstr(max_y-3, max_x - 5,
                                    "{:3}".format(self.selected_option))
                 self.screen.refresh()
-
 
             input_key = self.screen.getch()
             down_keys = [curses.KEY_DOWN, ord('j')]
@@ -82,7 +79,8 @@ class CursesMenu:
                     self.selected_option = option_count
 
             if input_key in exit_keys:
-                self.selected_option = option_count #auto select exit and return
+                self.selected_option = option_count
+                # auto select exit and return
                 break
 
         return self.selected_option
@@ -112,18 +110,19 @@ class CursesMenu:
 
 
 if __name__ == "__main__":
+    curses.initscr()
     menu = {'title' : 'Curses Menu',
             'type' : 'menu',
             'subtitle' : 'A Curses menu in Python'}
-    
+
     option_1 = {'title' : 'Hello World',
                 'type' : 'command',
                 'command' : 'echo Hello World!'}
 
     menu['options'] = [option_1]
-    m = CursesMenu(menu)
+    m = CursesMenu(menu, 20, 20, 0, 0)
 
     selected_action = m.display()
-    
+
     if selected_action['type'] != 'exitmenu':
         os.system(selected_action['command'])

@@ -4,7 +4,7 @@ from glob import glob
 from pathlib import Path
 import time
 import curses
-import _curses
+
 from curses import wrapper
 from curses import ascii
 from mutagen.flac import FLAC
@@ -16,8 +16,9 @@ locale.setlocale(locale.LC_ALL, '')
 
 sleep_time = 1/24
 home = str(Path.home())  # ~は使えない
-#files = [p for p in glob(home + '/Music/**/*', recursive=True)
+# files = [p for p in glob(home + '/Music/**/*', recursive=True)
 #         if re.search('/*\.(flac|wav)\Z', str(p))]
+
 files = [p for p in glob(home + '/Music/**/*', recursive=True)
          if re.search('/*\.flac\Z', str(p))]
 artists = set(FLAC(f)['artist'][-1] for f in files)
@@ -38,6 +39,9 @@ class CMenu:
     def __init__(self, title, h, w, y, x):
         self.window = curses.newwin(h, w, y, x)
         self.window.refresh()
+
+    def prompt_selection(self):
+        option_count = 1
 
 
 def main(stdscr):
