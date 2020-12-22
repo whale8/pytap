@@ -16,8 +16,10 @@ locale.setlocale(locale.LC_ALL, '')
 
 sleep_time = 1/24
 home = str(Path.home())  # ~は使えない
+#files = [p for p in glob(home + '/Music/**/*', recursive=True)
+#         if re.search('/*\.(flac|wav)\Z', str(p))]
 files = [p for p in glob(home + '/Music/**/*', recursive=True)
-         if re.search('/*\.(flac|wav)\Z', str(p))]
+         if re.search('/*\.flac\Z', str(p))]
 artists = set(FLAC(f)['artist'][-1] for f in files)
 
 # python 3.7 移行はdictも順序を保持する
