@@ -10,6 +10,7 @@ from curses import ascii
 from mutagen.flac import FLAC
 
 from play import Song
+from menu import CursesMenu
 
 import locale
 locale.setlocale(locale.LC_ALL, '')
@@ -34,15 +35,6 @@ for f in files:
 print(tree1)
 print(tree2)
 
-class CMenu:
-
-    def __init__(self, title, h, w, y, x):
-        self.window = curses.newwin(h, w, y, x)
-        self.window.refresh()
-
-    def prompt_selection(self):
-        option_count = 1
-
 
 def main(stdscr):
     highlight_text = curses.color_pair(1)
@@ -62,12 +54,14 @@ def main(stdscr):
     border.border(" ", 0, " ", " ", " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
     
     # left, artist
+    """
     left_win = curses.newwin(height, l_width - 1, 1, 0)
-    #left_win.clear()
     for i, artist in enumerate(tree1.keys()):
         left_win.addstr(i+1, 0,
                         "{}".format(artist))
-
+    """
+    left_win = CursesMenu(list(tree1.keys()), height, l_width - 1, 1, 0)
+    
     song = Song(files[-1])
     song.play()
     #songLength = song.seg.duration_seconds
@@ -81,13 +75,13 @@ def main(stdscr):
     
     stdscr.refresh()
     border.refresh()
-    left_win.move(0, 0)
-    left_win.refresh()
+    #left_win.move(0, 0)
+    #left_win.refresh()
     right_win.refresh()
     windows_list = [stdscr, border, left_win, right_win]
 
     while True:
-
+        left_win.display()
         cursor_y, cursor_x = stdscr.getyx()
         is_resized = curses.is_term_resized(max_row, max_col)
         if is_resized:
@@ -111,14 +105,16 @@ def main(stdscr):
 
         if key == ord('q'):
             break
+        """
         elif key == ascii.SO or key == curses.KEY_DOWN:
             cursor_y = min(max_row - 1, cursor_y + 1)
         elif key == ascii.DLE or key == curses.KEY_UP:
             cursor_y = max(0, cursor_y - 1)
+        """
 
         stdscr.move(cursor_y, cursor_x)
-        left_win.addstr(0, 0, f"{cursor_y},{cursor_x}")
-        left_win.addstr(1, 0, f"{max_row},{max_col}")
+        #left_win.addstr(0, 0, f"{cursor_y},{cursor_x}")
+        #left_win.addstr(1, 0, f"{max_row},{max_col}")
         
         time.sleep(sleep_time)
 
@@ -126,8 +122,8 @@ def main(stdscr):
             stdscr.refresh()
         if border.is_wintouched():
             border.refresh()
-        if left_win.is_wintouched():
-            left_win.refresh()
+        #if left_win.is_wintouched():
+        #    left_win.refresh()
         if right_win.is_wintouched():
             right_win.refresh()
 
