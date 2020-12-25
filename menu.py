@@ -5,6 +5,7 @@ from curses import ascii
 
 class CursesMenu:
 
+    # 継承書きたいけどwindow objec見つからない
     def __init__(self, options, h, w, y, x):
         self.screen = curses.newwin(h, w, y, x)
         self.options = options  # list
@@ -15,6 +16,21 @@ class CursesMenu:
         curses.init_pair(5, curses.COLOR_BLACK, curses.COLOR_WHITE)
         self.hilite_color = curses.color_pair(5)
         self.normal_color = curses.A_NORMAL
+
+    def resize(self, h, w):
+        self.screen.resize(h, w)
+
+    def move(self, y, x):
+        self.screen.move(y, x)
+
+    def mvwin(self, y, x):
+        self.screen.mvwin(y, x)
+
+    def clear(self):
+        self.screen.clear()
+
+    def refresh(self):
+        self.screen.refresh()
 
     def prompt_selection(self, parent=None):
         option_count = len(self.options)
@@ -53,11 +69,11 @@ class CursesMenu:
             self.selected_option %= option_count
             
             if input_key in exit_keys:
-                self.selected_option = option_count
-                # auto select exit and return
-                break
-
-        return self.selected_option
+                #self.selected_option = option_count - 1
+                #break
+                return None
+            
+        return self.options[self.selected_option]
 
     def _draw_option(self, option_number, style):
         self.screen.addstr(1 + option_number, 1,
@@ -67,13 +83,14 @@ class CursesMenu:
                            style)
 
     def display(self):
-        selected_option = self.prompt_selection()
+        #selected_option, _  = self.prompt_selection()
         #i, _ = self.screen.getmaxyx()
         #curses.endwin()
         #os.system('clear')
-        if selected_option < len(self.options):
-            selected_opt = self.options[selected_option]
-            return selected_opt
+        #if selected_option < len(self.options):
+        #    selected_opt = self.options[selected_option]
+        #    return selected_opt
+        return self.prompt_selection()
 
 
 if __name__ == "__main__":
@@ -89,5 +106,8 @@ if __name__ == "__main__":
     
     m = CursesMenu(list(options.keys()), 20, 20, 0, 0)
 
-    selected_action = m.display()
+    selected_action = m.prompt_selection()
+    curses.endwin()
+    os.system('clear')
+    print(selected_action)
     #os.system(selected_action['command'])

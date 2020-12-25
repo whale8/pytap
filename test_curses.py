@@ -81,7 +81,11 @@ def main(stdscr):
     windows_list = [stdscr, border, left_win, right_win]
 
     while True:
-        left_win.display()
+        selected_artist = left_win.prompt_selection()
+
+        if selected_artist == None:
+            break
+        
         cursor_y, cursor_x = stdscr.getyx()
         is_resized = curses.is_term_resized(max_row, max_col)
         if is_resized:
@@ -138,6 +142,7 @@ if __name__ == "__main__":
     # Start colors in curses
     curses.noecho()
     curses.cbreak()
+    curses.curs_set(0)
     curses.start_color()
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)
     curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
