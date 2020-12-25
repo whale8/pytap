@@ -149,6 +149,7 @@ class TuiAudioPlayer:
             else:
                 self.song = Song(self.songs[select_key])
                 self.song.play()
+                self.playing = True
                 
     def prompt_selection(self):
         if self.status == 0:
