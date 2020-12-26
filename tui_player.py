@@ -65,11 +65,11 @@ class TuiAudioPlayer:
         
     def make_windows(self):
         self.stdscr = curses.initscr()
-        max_row, max_col = self.stdscr.getmaxyx()
-        artist_width = max_col // 3
-        album_width = max_col // 3
-        song_width = max_col - artist_width - album_width
-        height = max_row - 3
+        self.max_row, self.max_col = self.stdscr.getmaxyx()
+        artist_width = self.max_col // 3
+        album_width = self.max_col // 3
+        song_width = self.max_col - artist_width - album_width
+        height = self.max_row - 3
         
         self.artist_win = curses.newwin(height, artist_width - 1,
                                         1, 0)
@@ -95,7 +95,41 @@ class TuiAudioPlayer:
         self.song_win.keypad(1)
 
     def resize(self):
-        pass
+        is_resized = curses.is_term_resized(self.max_row, self.max_col)
+        if is_resized:
+            self.max_row, self.max_col = self.stdscr.getmaxyx()
+            artist_width = self.max_col // 3
+            album_width = self.max_col // 3
+            song_width = self.max_col - artist_width - album_width
+            height = self.max_row - 3
+            self.stdscr.resize(self.max_row, self.max_col)
+            self.artist_win.resize(height, artist_width - 1)
+            self.album_win.resize(height, album_width - 1)
+            self.song_win.resize(height, song_width)
+            self.border1.resize(height, artist_width)
+            self.border2.resize(height, album_width)
+
+            self.album_win.mvwin(1, artist_width)
+            self.song_win.mvwin(1, artist_width + album_width)
+            self.border2.mvwin(1, artist_width)
+
+            self.clear()
+            for state in range(self.state):
+                self.draw_options(state)
+
+            self.refresh()
+
+    def clear(self):
+        self.stdscr.clear()
+        self.border1.clear()
+        self.border2.clear()
+        self.border1.border(" ", 0, " ", " ",
+                            " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
+        self.border2.border(" ", 0, " ", " ",
+                            " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
+        self.artist_win.clear()
+        self.album_win.clear()
+        self.song_win.clear()
 
     def refresh(self):
         self.stdscr.refresh()
@@ -105,6 +139,20 @@ class TuiAudioPlayer:
         self.album_win.refresh()
         self.song_win.refresh()
 
+    def draw_options(self, state):
+        attention_window = self.windows[state]
+        attention_options = self.displayed_options[state]
+        for i, option in enumerate(attention_options):
+            if self.selected_rows[state] == i:
+                attention_window.addstr(i + 1, 1,
+                                        f"{i+1:3}: {option}",
+                                        self.hilite_color)
+            else:
+                attention_window.addstr(i + 1, 1,
+                                        f"{i+1:3}: {option}",
+                                        self.normal_color)
+                
+        
     def run(self):
         # stateの変更は全部ここでする
         while True:
@@ -138,17 +186,8 @@ class TuiAudioPlayer:
         
         while input_key not in self.ENTER_KEYS + self.BACK_KEYS:
 
-            for i, option in enumerate(options):
-                if self.selected_rows[self.state] == i:
-                    #self._draw_option(i, option, self.hilite_color)
-                    attention_window.addstr(i + 1, 1,
-                                            "{:3}: {}".format(i+1, option),
-                                            self.hilite_color)
-                else:
-                    attention_window.addstr(i + 1, 1,
-                                            "{:3}: {}".format(i+1, option),
-                                            self.normal_color)
-                    #self._draw_option(i, option, self.normal_color)
+            self.resize()
+            self.draw_options(self.state)
 
             max_y, max_x = attention_window.getmaxyx()
             if input_key is not None:
@@ -160,7 +199,6 @@ class TuiAudioPlayer:
                                         f"1 {self.selected_rows[1]:3}")
                 attention_window.addstr(max_y - 2, max_x - 5,
                                         f"2 {self.selected_rows[2]:3}")
-                
                 attention_window.refresh()
 
             input_key = attention_window.getch()
@@ -188,12 +226,6 @@ class TuiAudioPlayer:
                 break
 
         return input_key
-        
-    def _draw_option(self, num, option, style):
-        attention_window = self.windows[self.state]
-        attention_window.addstr(num + 1, 1,
-                                f"{num+1:3}: {option}",
-                                style)
 
     def finish(self):
         if self.playing:
