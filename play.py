@@ -1,10 +1,12 @@
 from pydub import AudioSegment
 from pydub.utils import make_chunks
-from pyaudio import PyAudio
+from pyaudio import PyAudio, paContinue
 from pathlib import Path
 from mutagen.flac import FLAC
 from threading import Thread
 import time
+import struct
+import math
 
 # alsa message handling
 from ctypes import (CFUNCTYPE, c_char_p, c_int, cdll) 
@@ -49,7 +51,7 @@ class Song(Thread):
         return self.p.open(format=self.p.get_format_from_width(self.seg.sample_width),
                            channels=self.seg.channels,
                            rate=self.seg.frame_rate,
-                           output=True)
+                           output=True) #, stream_callback=self.callback)
 
     def run(self):
         stream = self.__get_stream()
@@ -62,6 +64,24 @@ class Song(Thread):
 
         stream.stop_stream()
         self.p.terminate()
+
+    def callback(self, in_data, frame_count, time_info, status):
+        # bytes型を配列に変換する
+        # (とりあえず8bit・モノクロだとした例を書く。
+        # データは1バイトづつであり、0〜255までで中央値が128であることに注意)
+        #print(in_data, frame_count, time_info, status)
+        """
+        in_data2 = struct.unpack(f'<{len(in_data)}B', in_data)
+        in_data3 = tuple((x - 128) / 128.0 for x in in_data2)
+        
+        # 読み取った配列(各要素は-1以上1以下の実数)について、RMSを計算する
+        rms = math.sqrt(sum([x * x for x in in_data3]) / len(in_data3))
+        
+        # RMSからデシベルを計算して表示する
+        db = 20 * math.log10(rms) if rms > 0.0 else -math.inf
+        print(f"RMS：{format(db, '3.1f')}[dB]")
+        """
+        return None, paContinue
 
 
 if __name__ == "__main__":

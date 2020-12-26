@@ -1,51 +1,13 @@
-import os
 import sys
-import re
-from glob import glob
-from pathlib import Path
-import time
 import curses
 
 from curses import wrapper
 from curses import ascii
-from mutagen.flac import FLAC
-
 from play import Song
-from menu import CursesMenu
+from get_files import get_files
 
 import locale
 locale.setlocale(locale.LC_ALL, '')
-
-sleep_time = 1/24
-home = str(Path.home())  # ~は使えない
-
-# files = [p for p in glob(home + '/Music/**/*', recursive=True)
-#         if re.search('/*\.(flac|wav)\Z', str(p))]
-
-files = [p for p in glob(home + '/Music/**/*', recursive=True)
-         if re.search('/*\.flac\Z', str(p))]
-
-tree1 = dict()
-tree2 = dict()
-tree3 = dict()
-for f in files:
-    artist = FLAC(f)['artist'][-1]
-    album = FLAC(f)['album'][-1]
-    title = FLAC(f)['title'][-1]
-    
-    if (artist not in tree1) \
-       or (artist in tree1 and album not in tree1[artist]):
-        tree1.setdefault(artist, []).append(album)
-        
-    if (album not in tree2) \
-       or (album in tree2 and album not in tree2[album]):
-        tree2.setdefault(album, []).append(title)
-
-    tree3.setdefault(title, f)
-
-print(tree1)
-print(tree2)
-print(tree3)
 
 
 class TuiAudioPlayer:
@@ -57,12 +19,12 @@ class TuiAudioPlayer:
         self.albums = albums  # dict
         self.songs = songs
         self.artists_list = list(self.artists.keys())
-        self.albums_list = list(self.albums.keys())
-
-        self.status = 0  # [artist, album, song]
-        self.selected_artist = 0
-        self.selected_album = 0
-        self.selected_song = 0
+        
+        self.state = 0  # [artist, album, song]
+        self.selected_rows = [0, 0, 0]  # [artist, album, song]
+        self.selected_names = [None, None, None]
+        self.options = [{None:self.artists_list}, self.artists, self.albums]
+        self.displayed_options = [self.artists_list, None, None]
         self.playing = False
         self.song = None
         
@@ -86,7 +48,11 @@ class TuiAudioPlayer:
         self.border2.bkgd(self.border_color)
         self.border1.bkgd(self.border_color)
         
-        self.ENTER_KEY = ord('\n')
+        self.ENTER_KEYS = [curses.KEY_RIGHT,
+                           ord('\n')]
+        self.BACK_KEYS = [curses.KEY_BACKSPACE,  # not reliable
+                          curses.KEY_LEFT,
+                          ord('b')]
         self.DOWN_KEYS = [curses.KEY_DOWN,
                           ascii.SO,
                           ord('j')]
@@ -94,7 +60,7 @@ class TuiAudioPlayer:
                         ascii.DLE,
                         ord('k')]
         self.EXIT_KEYS = [ord('q')]
-        
+
         self.refresh()
         
     def make_windows(self):
@@ -121,6 +87,8 @@ class TuiAudioPlayer:
         self.border2.border(" ", 0, " ", " ",
                             " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
 
+        self.windows = [self.artist_win, self.album_win, self.song_win]
+
         self.stdscr.keypad(1)
         self.artist_win.keypad(1)
         self.album_win.keypad(1)
@@ -138,84 +106,94 @@ class TuiAudioPlayer:
         self.song_win.refresh()
 
     def run(self):
+        # stateの変更は全部ここでする
         while True:
-            select_key = self.prompt_selection()
-            if self.status == 0:
-                self.status = 1
-                self.selected_album = 0
-            elif self.status == 1:
-                self.status = 2
-                self.selected_song = 0
+            # stateの応じた選択画面の表示
+            input_key = self.prompt_selection()
+            if input_key in self.ENTER_KEYS:
+                selected_name = self.selected_names[self.state]
+
+                if self.state == 2:
+                    if not self.playing:
+                        self.song = Song(self.songs[selected_name])
+                        self.song.play()
+                        self.playing = True
+                    else:
+                        pass
+                else:
+                    self.state += 1
+                    self.displayed_options[self.state] \
+                        = self.options[self.state][selected_name]
+                
             else:
-                self.song = Song(self.songs[select_key])
-                self.song.play()
-                self.playing = True
+                self.selected_rows[self.state] = 0
+                self.state = max(0, self.state - 1)
                 
     def prompt_selection(self):
-        if self.status == 0:
-            self.options = self.artists_list
-            selected_option = self.selected_artist
-            self.attention_screen = self.artist_win
-        elif self.status == 1:
-            self.options = self.artists[
-                self.artists_list[self.selected_artist]]
-            selected_option = self.selected_album
-            self.attention_screen = self.album_win
-        else:
-            self.options = self.albums[
-                self.albums_list[self.selected_album]]
-            selected_option = self.selected_song
-            self.attention_screen = self.song_win
 
-        option_count = len(self.options)
+        options = self.displayed_options[self.state] #attention_options
+        attention_window = self.windows[self.state]
+        option_count = len(options)
         input_key = None
         
-        while input_key != self.ENTER_KEY:
+        while input_key not in self.ENTER_KEYS + self.BACK_KEYS:
 
-            for option in range(option_count):
-                if selected_option == option:
-                    self._draw_option(option, self.hilite_color)
+            for i, option in enumerate(options):
+                if self.selected_rows[self.state] == i:
+                    #self._draw_option(i, option, self.hilite_color)
+                    attention_window.addstr(i + 1, 1,
+                                            "{:3}: {}".format(i+1, option),
+                                            self.hilite_color)
                 else:
-                    self._draw_option(option, self.normal_color)
+                    attention_window.addstr(i + 1, 1,
+                                            "{:3}: {}".format(i+1, option),
+                                            self.normal_color)
+                    #self._draw_option(i, option, self.normal_color)
 
-            max_y, max_x = self.attention_screen.getmaxyx()
+            max_y, max_x = attention_window.getmaxyx()
             if input_key is not None:
-                self.attention_screen.addstr(max_y - 3, max_x - 5,
-                                             "{:3}".format(selected_option))
-                self.attention_screen.refresh()
+                attention_window.addstr(max_y - 5, max_x - 5,
+                                        f"state {self.state:3}")
+                attention_window.addstr(max_y - 4, max_x - 5,
+                                        f"0 {self.selected_rows[0]:3}")
+                attention_window.addstr(max_y - 3, max_x - 5,
+                                        f"1 {self.selected_rows[1]:3}")
+                attention_window.addstr(max_y - 2, max_x - 5,
+                                        f"2 {self.selected_rows[2]:3}")
+                
+                attention_window.refresh()
 
-            input_key = self.attention_screen.getch()
+            input_key = attention_window.getch()
 
             if input_key in self.DOWN_KEYS:
-                selected_option += 1
+                self.selected_rows[self.state] += 1
 
             if input_key in self.UP_KEYS:
-                selected_option -= 1
-
-            selected_option %= option_count
+                self.selected_rows[self.state] -= 1
+                
+            self.selected_rows[self.state] %= option_count
             
             if input_key in self.EXIT_KEYS:
                 self.finish()
                 sys.exit(0)
-                # break
-                # return None
 
+            if input_key in self.ENTER_KEYS:
+                self.selected_names[self.state] \
+                    = options[self.selected_rows[self.state]]
+                break
 
-        if self.status == 0:
-            self.selected_artist = selected_option
-        elif self.status == 1:
-            self.selected_album = selected_option
-        else:
-            self.selected_song = selected_option
-            
-        return self.options[selected_option]
+            if input_key in self.BACK_KEYS:
+                attention_window.clear()
+                attention_window.refresh()
+                break
 
-    def _draw_option(self, option_number, style):
-        self.attention_screen.addstr(1 + option_number, 1,
-                                     "{:3}: {}".\
-                                     format(option_number+1,
-                                            self.options[option_number]),
-                                     style)
+        return input_key
+        
+    def _draw_option(self, num, option, style):
+        attention_window = self.windows[self.state]
+        attention_window.addstr(num + 1, 1,
+                                f"{num+1:3}: {option}",
+                                style)
 
     def finish(self):
         if self.playing:
@@ -225,7 +203,8 @@ class TuiAudioPlayer:
         curses.endwin()
 
 def main(stdscr):
-    tap = TuiAudioPlayer(tree1, tree2, tree3)
+    artists, albums, songs = get_files()
+    tap = TuiAudioPlayer(artists, albums, songs)
     tap.run()
 
 if __name__ == "__main__":
