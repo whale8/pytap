@@ -163,12 +163,14 @@ class TuiAudioPlayer:
 
                 if self.state == 2:
                     if not self.playing:
-                        self.song = Song(self.songs[selected_name])
+                        playlist = [self.songs[selected_name]]
+                        self.song = Song(playlist)
                         self.song.play()
                         self.playing = True
                     else:
                         self.song.pause()
-                        self.song = Song(self.songs[selected_name])
+                        playlist = [self.songs[selected_name]]
+                        self.song = Song(playlist)
                         self.song.play()
                 else:
                     self.state += 1

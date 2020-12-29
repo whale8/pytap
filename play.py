@@ -1,12 +1,11 @@
+import time
+from pathlib import Path
+from threading import Thread, Condition, Lock
+
 from pydub import AudioSegment
 from pydub.utils import make_chunks
-from pyaudio import PyAudio, paContinue
-from pathlib import Path
+from pyaudio import PyAudio
 from mutagen.flac import FLAC
-from threading import Thread, Condition, Lock
-import time
-import struct
-import math
 
 # alsa message handling
 from ctypes import (CFUNCTYPE, c_char_p, c_int, cdll) 
@@ -37,7 +36,6 @@ class Song(Thread):
         self.playlist_len = len(playlist)
         self.play_number = 0
         self.play_count = 0
-        self.__set_next_song()
         self.is_looped = is_loop
         self.is_paused = True
         self.is_stoped = True
@@ -46,27 +44,29 @@ class Song(Thread):
 
         Thread.__init__(self, *args, **kwargs)
         self.pause_condition = Condition(Lock())
-        #self.start()
+        self.stop_condition = Condition(Lock())
 
-    def pause(self):
-        print('pause')
+    def pause(self):  # 再生状況を保存
         self.is_paused = True
-        self.is_stoped = True
         self.pause_condition.acquire()
 
+    def stop(self):  # 再生中の曲番号だけ保存，再生状況は保存しない
+        self.is_stoped = True
+        self.stop_condition.acquire()
+
     def play(self):
-        self.is_paused = False
-        self.is_stoped = False
-        
         if not self._started.is_set():  # is not started
             self.start()
         else:  # restart
-            self.pause_condition.notify()
-            self.pause_condition.release()
-    
-    def stop(self):
+            if self.is_stoped:
+                self.stop_condition.notify()
+                self.stop_condition.release()
+            if self.is_paused:
+                self.pause_condition.notify()
+                self.pause_condition.release()            
+
         self.is_paused = False
-        self.is_stoped = True
+        self.is_stoped = False
 
     def loop_on(self):
         self.is_looped = True
@@ -74,7 +74,7 @@ class Song(Thread):
     def loop_off(self):
         self.is_looped = False
     
-    def __set_next_song(self):
+    def __set_segment(self):
         self.play_number = self.play_count % self.playlist_len
         f = self.playlist[self.play_number]
         self.seg = AudioSegment.from_file(f)
@@ -85,41 +85,50 @@ class Song(Thread):
                            rate=self.seg.frame_rate,
                            output=True) #, stream_callback=self.callback)
 
-    def run(self):
-        # loop playlist
+    def __play_song(self):
+        self.__set_segment()
         stream = self.__get_stream()
         chunk_count = 0
         chunks = make_chunks(self.seg, 100)
         
-        while chunk_count < len(chunks):
+        while not self.is_stoped:
+            if chunk_count >= len(chunks):  # 最後まで再生して終了
+                self.play_count += 1  # next song
+                break
+            
             with self.pause_condition:
-                while self.is_paused:
-                    self.pause_condition.wait()
-
                 data = (chunks[chunk_count])._data
                 chunk_count += 1
                 stream.write(data)
+                
+                while self.is_paused:
+                    stream.stop_stream()
+                    # ALSA lib pcm.c:8526:(snd_pcm_recover) underrun occurred
+                    self.pause_condition.wait()
+                    stream.start_stream()  # resume
 
         stream.close()  # terminate the stream
-        self.p.terminate()  # terminate the portaudio session
 
-    def callback(self, in_data, frame_count, time_info, status):
-        # bytes型を配列に変換する
-        # (とりあえず8bit・モノクロだとした例を書く。
-        # データは1バイトづつであり、0〜255までで中央値が128であることに注意)
-        #print(in_data, frame_count, time_info, status)
-        """
-        in_data2 = struct.unpack(f'<{len(in_data)}B', in_data)
-        in_data3 = tuple((x - 128) / 128.0 for x in in_data2)
+    def skip(self):
+        self.stop()
+        self.play_count += 1
+        self.play()
+
+    def rewind(self):
+        self.stop()
+        self.play_count = min(0, self.play_count - 1)
+        self.play()
         
-        # 読み取った配列(各要素は-1以上1以下の実数)について、RMSを計算する
-        rms = math.sqrt(sum([x * x for x in in_data3]) / len(in_data3))
-        
-        # RMSからデシベルを計算して表示する
-        db = 20 * math.log10(rms) if rms > 0.0 else -math.inf
-        print(f"RMS：{format(db, '3.1f')}[dB]")
-        """
-        return None, paContinue
+    def run(self):
+        # loop playlist
+        while True:
+            with self.stop_condition:
+                self.__play_song()
+                while self.is_stoped:
+                    self.stop_condition.wait()
+                    # 一回多く足されている
+
+        self.p.terminate()  # terminate the portaudio session
 
 
 if __name__ == "__main__":
@@ -143,8 +152,20 @@ if __name__ == "__main__":
     song = Song(playlist)
     song.play()
     time.sleep(3)
+    print('pause')
     song.pause()
     time.sleep(3)
     song.play()
+    time.sleep(3)
+    print('stop')
+    song.stop()
+    time.sleep(3)
+    song.play()
+    print('skip')
+    song.skip()
+    time.sleep(3)
+    print('rewind')
+    song.rewind()
+    
     #songLength = song.seg.duration_seconds
     #time.sleep(songLength - 1)  # daemon=Falseなのでsongだけが残ると終了する
