@@ -33,7 +33,6 @@ def noalsaerr():
 class Song(Thread):
     def __init__(self, playlist, is_loop=False, *args, **kwargs):
         self.playlist = playlist
-        self.playlist_len = len(playlist)
         self.play_number = 0
         self.play_count = 0
         self.is_looped = is_loop
@@ -72,10 +71,12 @@ class Song(Thread):
         self.is_looped = True
 
     def loop_off(self):
+        # offにしてもplaylistの現在の曲から最後までは演奏する
+        self.play_count = self.play_count % len(self.playlist)
         self.is_looped = False
     
     def __set_segment(self):
-        self.play_number = self.play_count % self.playlist_len
+        self.play_number = self.play_count % len(self.playlist)
         f = self.playlist[self.play_number]
         self.seg = AudioSegment.from_file(f)
 
@@ -121,12 +122,11 @@ class Song(Thread):
         
     def run(self):
         # loop playlist
-        while True:
+        while self.play_count < len(self.playlist) or self.is_looped:
             with self.stop_condition:
                 self.__play_song()
                 while self.is_stoped:
                     self.stop_condition.wait()
-                    # 一回多く足されている
 
         self.p.terminate()  # terminate the portaudio session
 
@@ -166,6 +166,13 @@ if __name__ == "__main__":
     time.sleep(3)
     print('rewind')
     song.rewind()
+    print('skip')
+    song.skip()
+    time.sleep(3)
+    song.loop_on()
+    print('skip')
+    song.skip()
+    time.sleep(3)
     
     #songLength = song.seg.duration_seconds
     #time.sleep(songLength - 1)  # daemon=Falseなのでsongだけが残ると終了する
