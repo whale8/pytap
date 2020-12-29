@@ -38,10 +38,12 @@ class Song(Thread):
         self.is_looped = is_loop
         self.is_paused = True
         self.is_stoped = True
+        self.is_terminated = True
         with noalsaerr():
             self.p = PyAudio()
 
         Thread.__init__(self, *args, **kwargs)
+        self.daemon = True
         self.pause_condition = Condition(Lock())
         self.stop_condition = Condition(Lock())
 
@@ -66,6 +68,19 @@ class Song(Thread):
 
         self.is_paused = False
         self.is_stoped = False
+
+    def terminate(self):
+        self.is_terminated = True
+        
+    def skip(self):
+        self.stop()
+        self.play_count += 1
+        self.play()
+
+    def rewind(self):
+        self.stop()
+        self.play_count = min(0, self.play_count - 1)
+        self.play()
 
     def loop_on(self):
         self.is_looped = True
@@ -109,20 +124,11 @@ class Song(Thread):
                     stream.start_stream()  # resume
 
         stream.close()  # terminate the stream
-
-    def skip(self):
-        self.stop()
-        self.play_count += 1
-        self.play()
-
-    def rewind(self):
-        self.stop()
-        self.play_count = min(0, self.play_count - 1)
-        self.play()
         
     def run(self):
         # loop playlist
-        while self.play_count < len(self.playlist) or self.is_looped:
+        while self.play_count < len(self.playlist) \
+              or self.is_looped or not self.is_terminated:
             with self.stop_condition:
                 self.__play_song()
                 while self.is_stoped:

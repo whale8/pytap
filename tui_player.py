@@ -233,8 +233,8 @@ class TuiAudioPlayer:
 
     def finish(self):
         # 終了処理
-        if self.playing:
-            self.song.pause()
+        if self.song != None:
+            self.song.terminate()
 
         curses.nocbreak()  # 元の設定に戻す
         curses.echo()  # 元の設定に戻す
