@@ -1,8 +1,8 @@
 import sys
 import curses
-
 from curses import wrapper
 from curses import ascii
+
 from play import Song
 from get_files import get_files
 
@@ -13,8 +13,8 @@ locale.setlocale(locale.LC_ALL, '')
 class TuiAudioPlayer:
 
     # 継承書きたいけどwindow objec見つからない
-    def __init__(self, artists, albums, songs):
-        
+    def __init__(self, stdscr, artists, albums, songs):
+        self.stdscr = stdscr
         self.artists = artists  # dict
         self.albums = albums  # dict
         self.songs = songs
@@ -26,14 +26,13 @@ class TuiAudioPlayer:
         self.options = [{None:self.artists_list}, self.artists, self.albums]
         self.displayed_options = [self.artists_list, None, None]
         self.playing = False
+        self.is_loop = False
+        self.is_repeat = False
         self.song = None
         
-        # Start windows
-        self.make_windows()
-
-        curses.noecho()
-        curses.cbreak()
-        curses.curs_set(0)
+        curses.noecho()  # キー入力を表示させない
+        curses.cbreak()  # バッファを無効化(enterなしで反応する)
+        curses.curs_set(0)  # カーソル無効化
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_CYAN)  # for bkgd
         curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK) # for border
@@ -43,11 +42,7 @@ class TuiAudioPlayer:
         self.border_color = curses.color_pair(2)
         self.hilite_color = curses.color_pair(3)
         self.normal_color = curses.A_NORMAL
-        
-        self.stdscr.bkgd(self.bkdg_color)
-        self.border2.bkgd(self.border_color)
-        self.border1.bkgd(self.border_color)
-        
+                
         self.ENTER_KEYS = [curses.KEY_RIGHT,
                            ord('\n')]
         self.BACK_KEYS = [curses.KEY_BACKSPACE,  # not reliable
@@ -61,10 +56,7 @@ class TuiAudioPlayer:
                         ord('k')]
         self.EXIT_KEYS = [ord('q')]
 
-        self.refresh()
-        
     def make_windows(self):
-        self.stdscr = curses.initscr()
         self.max_row, self.max_col = self.stdscr.getmaxyx()
         artist_width = self.max_col // 3
         album_width = self.max_col // 3
@@ -89,6 +81,7 @@ class TuiAudioPlayer:
 
         self.windows = [self.artist_win, self.album_win, self.song_win]
 
+        # pageupやカーソルキーを有効化
         self.stdscr.keypad(1)
         self.artist_win.keypad(1)
         self.album_win.keypad(1)
@@ -151,9 +144,16 @@ class TuiAudioPlayer:
                 attention_window.addstr(i + 1, 1,
                                         f"{i+1:3}: {option}",
                                         self.normal_color)
-                
-        
+
     def run(self):
+        # Start windows
+        self.make_windows()
+        self.stdscr.bkgd(self.bkdg_color)
+        self.border2.bkgd(self.border_color)
+        self.border1.bkgd(self.border_color)
+        self.refresh()
+
+        # main loop
         # stateの変更は全部ここでする
         while True:
             # stateの応じた選択画面の表示
@@ -167,7 +167,9 @@ class TuiAudioPlayer:
                         self.song.play()
                         self.playing = True
                     else:
-                        pass
+                        self.song.pause()
+                        self.song = Song(self.songs[selected_name])
+                        self.song.play()
                 else:
                     self.state += 1
                     self.displayed_options[self.state] \
@@ -228,17 +230,20 @@ class TuiAudioPlayer:
         return input_key
 
     def finish(self):
+        # 終了処理
         if self.playing:
             self.song.pause()
 
-        curses.echo()
+        curses.nocbreak()  # 元の設定に戻す
+        curses.echo()  # 元の設定に戻す
         curses.endwin()
 
 def main(stdscr):
     artists, albums, songs = get_files()
-    tap = TuiAudioPlayer(artists, albums, songs)
+    tap = TuiAudioPlayer(stdscr, artists, albums, songs)
     tap.run()
 
 if __name__ == "__main__":
+    stdscr = curses.initscr()
     wrapper(main)
 

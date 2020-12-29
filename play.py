@@ -3,7 +3,7 @@ from pydub.utils import make_chunks
 from pyaudio import PyAudio, paContinue
 from pathlib import Path
 from mutagen.flac import FLAC
-from threading import Thread
+from threading import Thread, Condition, Lock
 import time
 import struct
 import math
@@ -32,20 +32,52 @@ def noalsaerr():
 
 
 class Song(Thread):
-    def __init__(self, f, *args, **kwargs):
-        self.seg = AudioSegment.from_file(f)
-        self.__is_paused = True
+    def __init__(self, playlist, is_loop=False, *args, **kwargs):
+        self.playlist = playlist
+        self.playlist_len = len(playlist)
+        self.play_number = 0
+        self.play_count = 0
+        self.__set_next_song()
+        self.is_looped = is_loop
+        self.is_paused = True
+        self.is_stoped = True
         with noalsaerr():
             self.p = PyAudio()
 
         Thread.__init__(self, *args, **kwargs)
-        self.start()
+        self.pause_condition = Condition(Lock())
+        #self.start()
 
     def pause(self):
-        self.__is_paused = True
+        print('pause')
+        self.is_paused = True
+        self.is_stoped = True
+        self.pause_condition.acquire()
 
     def play(self):
-        self.__is_paused = False
+        self.is_paused = False
+        self.is_stoped = False
+        
+        if not self._started.is_set():  # is not started
+            self.start()
+        else:  # restart
+            self.pause_condition.notify()
+            self.pause_condition.release()
+    
+    def stop(self):
+        self.is_paused = False
+        self.is_stoped = True
+
+    def loop_on(self):
+        self.is_looped = True
+
+    def loop_off(self):
+        self.is_looped = False
+    
+    def __set_next_song(self):
+        self.play_number = self.play_count % self.playlist_len
+        f = self.playlist[self.play_number]
+        self.seg = AudioSegment.from_file(f)
 
     def __get_stream(self):
         return self.p.open(format=self.p.get_format_from_width(self.seg.sample_width),
@@ -54,16 +86,22 @@ class Song(Thread):
                            output=True) #, stream_callback=self.callback)
 
     def run(self):
+        # loop playlist
         stream = self.__get_stream()
         chunk_count = 0
         chunks = make_chunks(self.seg, 100)
-        while chunk_count < len(chunks) and not self.__is_paused:
-            data = (chunks[chunk_count])._data
-            chunk_count += 1
-            stream.write(data)
+        
+        while chunk_count < len(chunks):
+            with self.pause_condition:
+                while self.is_paused:
+                    self.pause_condition.wait()
 
-        stream.stop_stream()
-        self.p.terminate()
+                data = (chunks[chunk_count])._data
+                chunk_count += 1
+                stream.write(data)
+
+        stream.close()  # terminate the stream
+        self.p.terminate()  # terminate the portaudio session
 
     def callback(self, in_data, frame_count, time_info, status):
         # bytes型を配列に変換する
@@ -87,8 +125,9 @@ class Song(Thread):
 if __name__ == "__main__":
     
     home = str(Path.home())  # ~は使えない
-    file_name = home + "/Music/大貫妙子＆坂本龍一/UTAU/03 - 大貫妙子＆坂本龍一 - ３びきのくま.flac"
-    tags = FLAC(file_name)
+    file_name1 = home + "/Music/大貫妙子＆坂本龍一/UTAU/03 - 大貫妙子＆坂本龍一 - ３びきのくま.flac"
+    file_name2 = home + "/Music/大貫妙子＆坂本龍一/UTAU/04 - 大貫妙子＆坂本龍一 - 赤とんぼ.flac"
+    tags = FLAC(file_name1)
     print(tags)
     print(tags['title'][-1])
     #seg = pydub.AudioSegment.from_file(file_name, format='flac')
@@ -100,9 +139,12 @@ if __name__ == "__main__":
     # dependent and may not work across runs??
     # Better would be to kill each tread when self._is_paused = True. 
     # I have a bunch of active threads piling up
-    song = Song(file_name)
+    playlist = [file_name1, file_name2]
+    song = Song(playlist)
     song.play()
-    time.sleep(10)
+    time.sleep(3)
     song.pause()
-    songLength = song.seg.duration_seconds
-    time.sleep(songLength - 1)
+    time.sleep(3)
+    song.play()
+    #songLength = song.seg.duration_seconds
+    #time.sleep(songLength - 1)  # daemon=Falseなのでsongだけが残ると終了する
