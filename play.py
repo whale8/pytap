@@ -89,41 +89,51 @@ class Song(Thread):
         # offにしてもplaylistの現在の曲から最後までは演奏する
         self.play_count = self.play_count % len(self.playlist)
         self.is_looped = False
+
+    def volume(self, decibel):
+        self.pause()  # underrun 防止
+        self.__set_segment()
+        self.seg += decibel
+        self.__set_stream()
+        self.chunks = make_chunks(self.seg, 100)
+        self.play()
     
     def __set_segment(self):
         self.play_number = self.play_count % len(self.playlist)
         f = self.playlist[self.play_number]
         self.seg = AudioSegment.from_file(f)
 
-    def __get_stream(self):
-        return self.p.open(format=self.p.get_format_from_width(self.seg.sample_width),
-                           channels=self.seg.channels,
-                           rate=self.seg.frame_rate,
-                           output=True) #, stream_callback=self.callback)
+    def __set_stream(self):
+        self.stream = self.p.open(format
+                                  =self.p.get_format_from_width(
+                                      self.seg.sample_width),
+                                  channels=self.seg.channels,
+                                  rate=self.seg.frame_rate,
+                                  output=True) #, stream_callback=self.callback)
 
     def __play_song(self):
         self.__set_segment()
-        stream = self.__get_stream()
+        self.__set_stream()
         chunk_count = 0
-        chunks = make_chunks(self.seg, 100)
+        self.chunks = make_chunks(self.seg, 100)
         
         while not self.is_stoped:
-            if chunk_count >= len(chunks):  # 最後まで再生して終了
+            if chunk_count >= len(self.chunks):  # 最後まで再生して終了
                 self.play_count += 1  # next song
                 break
             
             with self.pause_condition:
-                data = (chunks[chunk_count])._data
+                data = (self.chunks[chunk_count])._data
                 chunk_count += 1
-                stream.write(data)
+                self.stream.write(data)
                 
                 while self.is_paused:
-                    stream.stop_stream()
+                    self.stream.stop_stream()
                     # ALSA lib pcm.c:8526:(snd_pcm_recover) underrun occurred
                     self.pause_condition.wait()
-                    stream.start_stream()  # resume
+                    self.stream.start_stream()  # resume
 
-        stream.close()  # terminate the stream
+        self.stream.close()  # terminate the stream
         
     def run(self):
         # loop playlist
@@ -131,6 +141,7 @@ class Song(Thread):
               or self.is_looped or not self.is_terminated:
             with self.stop_condition:
                 self.__play_song()
+
                 while self.is_stoped:
                     self.stop_condition.wait()
 
@@ -157,7 +168,17 @@ if __name__ == "__main__":
     playlist = [file_name1, file_name2]
     song = Song(playlist)
     song.play()
-    time.sleep(3)
+    time.sleep(5)
+    print('volume')
+    song.volume(10)
+    song.seg += 15
+    time.sleep(5)
+    print('volume')
+    song.volume(10)
+    time.sleep(5)
+    print('volume')
+    song.volume(-20)
+    time.sleep(5)
     print('pause')
     song.pause()
     time.sleep(3)
