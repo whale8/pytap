@@ -1,11 +1,12 @@
 import sys
 import time
+from datetime import timedelta
 from threading import Thread
 import curses
 from curses import wrapper
 from curses import ascii
 
-from play import Song
+from play import Song, make_progressbar
 from get_files import get_files
 
 import locale
@@ -14,7 +15,6 @@ locale.setlocale(locale.LC_ALL, '')
 
 class TuiAudioPlayer:
 
-    # 継承書きたいけどwindow objec見つからない
     def __init__(self, stdscr, artists, albums, songs):
         self.stdscr = stdscr
         self.artists = artists  # dict
@@ -57,13 +57,15 @@ class TuiAudioPlayer:
                         ascii.DLE,
                         ord('k')]
         self.EXIT_KEYS = [ord('q')]
-
+ 
     def make_windows(self):
         self.max_row, self.max_col = self.stdscr.getmaxyx()
         artist_width = self.max_col // 3
         album_width = self.max_col // 3
         song_width = self.max_col - artist_width - album_width
-        height = self.max_row - 5
+        bottom_height = 6
+        height = self.max_row - bottom_height
+        
         
         self.artist_win = curses.newwin(height, artist_width - 1,
                                         1, 0)
@@ -75,7 +77,7 @@ class TuiAudioPlayer:
                                      1, 0)
         self.border2 = curses.newwin(height, album_width,
                                      1, artist_width)
-        self.bottom_win = curses.newwin(3, self.max_col, height + 2,  0)
+        self.bottom_win = curses.newwin(bottom_height - 1, self.max_col, height + 2,  0)
 
         self.border1.border(" ", 0, " ", " ",
                             " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
@@ -144,14 +146,32 @@ class TuiAudioPlayer:
             duration = self.song.duration
             rate = self.song.rate
             channels = self.song.channels
+            title = self.song.title
+            album = self.song.album
+            artist = self.song.artist
             db = self.song.db
             progress = self.song.progress
+            progress_bar = make_progressbar(progress)
+            time_elapsed = int(self.song.chunk_count * self.song.chunk_ms / 1000)
+            time_left = int(duration) - time_elapsed
+
+            info1 = f"    Duration: {timedelta(seconds=int(duration))}\t" \
+                f" Title: {title}\n" \
+                f"Samplingrate: {rate} Hz\t" \
+                f" Album: {album}\n" \
+                f"    Channels: {channels} @ {channels*8}bit\t" \
+                f"Artist: {artist}"
+
+            info2 = f"\r[{progress_bar}] {progress*100:5.2f} % " \
+                f"{timedelta(seconds=time_elapsed)} " \
+                f"[{timedelta(seconds=time_left)}]"
+
             self.bottom_win.erase()
-            self.bottom_win.addstr(1, 1,
-                                   f"{duration:4.2f}, {rate}, {channels}, {db:6.2f}")
-            self.bottom_win.addstr(2, 1, f"{progress*100:6.2f}")
+            time.sleep(0.25)
+            self.bottom_win.addstr(0, 1,
+                                   info1)
+            self.bottom_win.addstr(3, 1, info2)
             self.bottom_win.refresh()
-            time.sleep(0.1)
         
     def draw_options(self, state):
         attention_window = self.windows[state]
@@ -187,20 +207,17 @@ class TuiAudioPlayer:
                         playlist = [self.songs[selected_name]]
                         self.song = Song(playlist)
                         self.song.play()
-                        self.playing = True
-                        self.p = Thread(target=self.render_bottom)
-                        self.p.setDaemon(True)
-                        self.p.start()
                     else:
                         self.playing = False  # terminate p
                         self.song.pause()
                         playlist = [self.songs[selected_name]]
                         self.song = Song(playlist)
                         self.song.play()
-                        self.playing = True
-                        self.p = Thread(target=self.render_bottom)
-                        self.p.setDaemon(True)
-                        self.p.start()
+                    
+                    self.playing = True
+                    self.p = Thread(target=self.render_bottom)
+                    self.p.setDaemon(True)
+                    self.p.start()
                         
                 else:
                     self.state += 1
@@ -274,7 +291,7 @@ def main(stdscr):
     artists, albums, songs = get_files()
     tap = TuiAudioPlayer(stdscr, artists, albums, songs)
     tap.run()
-
+    
 if __name__ == "__main__":
     stdscr = curses.initscr()
     wrapper(main)

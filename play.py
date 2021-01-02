@@ -1,4 +1,5 @@
 import time
+from datetime import timedelta
 from pathlib import Path
 from threading import Thread, Condition, Lock
 
@@ -44,7 +45,12 @@ class Song(Thread):
         self.duration = 0
         self.rate = 0
         self.channels = 0
+        self.title = ""
+        self.artist = ""
+        self.album = ""
+        self.track = ""
         self.chunk_ms = 100  # 100 millisec
+        self.chunk_count = 0
         with noalsaerr():
             self.p = PyAudio()
 
@@ -121,6 +127,11 @@ class Song(Thread):
     def __set_segment(self):
         self.play_number = self.play_count % len(self.playlist)
         f = self.playlist[self.play_number]
+        tags = FLAC(f)
+        self.title = tags['title'][-1]
+        self.album = tags['album'][-1]
+        self.artist = tags['artist'][-1]
+        self.track = tags['tracknumber']
         self.seg = AudioSegment.from_file(f)
 
     def __set_stream(self):
@@ -188,9 +199,9 @@ if __name__ == "__main__":
     home = str(Path.home())  # ~は使えない
     file_name1 = home + "/Music/大貫妙子＆坂本龍一/UTAU/03 - 大貫妙子＆坂本龍一 - ３びきのくま.flac"
     file_name2 = home + "/Music/大貫妙子＆坂本龍一/UTAU/04 - 大貫妙子＆坂本龍一 - 赤とんぼ.flac"
-    tags = FLAC(file_name1)
-    print(tags)
-    print(tags['title'][-1])
+    #tags = FLAC(file_name1)
+    #print(tags)
+    #print(tags['title'][-1])
     #seg = pydub.AudioSegment.from_file(file_name1, format='flac')
     #play(seg)
         
@@ -199,20 +210,29 @@ if __name__ == "__main__":
     song.play()
     time.sleep(1)
     duration, rate, channels, sample_width = song.get_info()
-    print(song.duration, song.rate, song.channels, song.sample_width)
+    print(f"    Duration: {timedelta(seconds=int(song.duration))}\t"
+          f" Title: {song.title}\n"
+          f"Samplingrate: {song.rate} Hz\t"
+          f" Album: {song.album}\n"
+          f"    Channels: {song.channels} @ {song.channels*8}bit\t"
+          f"Artist: {song.artist}")
     while True:
         time.sleep(0.02)
         progress_bar = make_progressbar(song.progress)
-        print(f'\r[{progress_bar}] {song.progress*100:5.2f}%', end='')
+        time_elapsed = int(song.chunk_count * song.chunk_ms / 1000)
+        time_left = int(song.duration) - time_elapsed
+        print(f"\r[{progress_bar}] {song.progress*100:5.2f} % " +
+              f"{timedelta(seconds=time_elapsed)} " +
+              f"[{timedelta(seconds=time_left)}]", end="")
         
     time.sleep(5)
-    print('volume')
+    print("volume")
     song.volume(1)
     time.sleep(180)
-    print('volume')
+    print("volume")
     song.volume(1)
     time.sleep(5)
-    print('volume')
+    print("volume")
     song.volume(-1)
     time.sleep(5)
     print('pause')
