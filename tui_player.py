@@ -1,4 +1,6 @@
 import sys
+import time
+from threading import Thread
 import curses
 from curses import wrapper
 from curses import ascii
@@ -61,7 +63,7 @@ class TuiAudioPlayer:
         artist_width = self.max_col // 3
         album_width = self.max_col // 3
         song_width = self.max_col - artist_width - album_width
-        height = self.max_row - 3
+        height = self.max_row - 5
         
         self.artist_win = curses.newwin(height, artist_width - 1,
                                         1, 0)
@@ -73,19 +75,22 @@ class TuiAudioPlayer:
                                      1, 0)
         self.border2 = curses.newwin(height, album_width,
                                      1, artist_width)
+        self.bottom_win = curses.newwin(3, self.max_col, height + 2,  0)
 
         self.border1.border(" ", 0, " ", " ",
                             " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
         self.border2.border(" ", 0, " ", " ",
                             " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
 
-        self.windows = [self.artist_win, self.album_win, self.song_win]
+        self.windows = [self.artist_win, self.album_win,
+                        self.song_win, self.bottom_win]
 
         # pageupやカーソルキーを有効化
         self.stdscr.keypad(1)
         self.artist_win.keypad(1)
         self.album_win.keypad(1)
         self.song_win.keypad(1)
+        self.bottom_win.keypad(1)
 
     def resize(self):
         is_resized = curses.is_term_resized(self.max_row, self.max_col)
@@ -123,6 +128,7 @@ class TuiAudioPlayer:
         self.artist_win.clear()
         self.album_win.clear()
         self.song_win.clear()
+        self.bottom_win.clear()
 
     def refresh(self):
         self.stdscr.refresh()
@@ -131,7 +137,22 @@ class TuiAudioPlayer:
         self.artist_win.refresh()
         self.album_win.refresh()
         self.song_win.refresh()
+        self.bottom_win.refresh()
 
+    def render_bottom(self):
+        while self.playing:
+            duration = self.song.duration
+            rate = self.song.rate
+            channels = self.song.channels
+            db = self.song.db
+            progress = self.song.progress
+            self.bottom_win.erase()
+            self.bottom_win.addstr(1, 1,
+                                   f"{duration:4.2f}, {rate}, {channels}, {db:6.2f}")
+            self.bottom_win.addstr(2, 1, f"{progress*100:6.2f}")
+            self.bottom_win.refresh()
+            time.sleep(0.1)
+        
     def draw_options(self, state):
         attention_window = self.windows[state]
         attention_options = self.displayed_options[state]
@@ -167,11 +188,20 @@ class TuiAudioPlayer:
                         self.song = Song(playlist)
                         self.song.play()
                         self.playing = True
+                        self.p = Thread(target=self.render_bottom)
+                        self.p.setDaemon(True)
+                        self.p.start()
                     else:
+                        self.playing = False  # terminate p
                         self.song.pause()
                         playlist = [self.songs[selected_name]]
                         self.song = Song(playlist)
                         self.song.play()
+                        self.playing = True
+                        self.p = Thread(target=self.render_bottom)
+                        self.p.setDaemon(True)
+                        self.p.start()
+                        
                 else:
                     self.state += 1
                     self.displayed_options[self.state] \

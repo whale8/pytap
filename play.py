@@ -39,11 +39,18 @@ class Song(Thread):
         self.is_paused = True
         self.is_stoped = True
         self.is_terminated = True
+        self.progress = 0
+        self.db = 0
+        self.duration = 0
+        self.rate = 0
+        self.channels = 0
+        self.chunk_ms = 100  # 100 millisec
         with noalsaerr():
             self.p = PyAudio()
 
         Thread.__init__(self, *args, **kwargs)
-        self.daemon = True
+        self.daemon = True  # mainスレッドが終了した場合に終わるように
+        # Songクラス単体で使うならFalseにするか，time.sleep(duration)
         self.pause_condition = Condition(Lock())
         self.stop_condition = Condition(Lock())
 
@@ -90,13 +97,26 @@ class Song(Thread):
         self.play_count = self.play_count % len(self.playlist)
         self.is_looped = False
 
-    def volume(self, decibel):
+    def volume(self, decibel):  # 音割れする，別の手法にすべきか
         self.pause()  # underrun 防止
         self.__set_segment()
         self.seg += decibel
+        self.chunks = make_chunks(self.seg, self.chunk_ms)
         self.__set_stream()
-        self.chunks = make_chunks(self.seg, 100)
         self.play()
+
+    def mute(self):
+        pass
+
+    def get_info(self):  # set_info?
+        duration = self.seg.duration_seconds  # 再生時間
+        rate = self.seg.frame_rate  # サンプリングレート
+        channels = self.seg.channels  # (1:mono, 2:stereo)
+        sample_width = self.seg.sample_width  # byte
+        return (duration, rate, channels, sample_width)
+
+    def get_playback_info(self):
+        return (self.progress, self.db)
     
     def __set_segment(self):
         self.play_number = self.play_count % len(self.playlist)
@@ -109,22 +129,29 @@ class Song(Thread):
                                       self.seg.sample_width),
                                   channels=self.seg.channels,
                                   rate=self.seg.frame_rate,
-                                  output=True) #, stream_callback=self.callback)
+                                  output=True)#, stream_callback=self.callback)
 
     def __play_song(self):
         self.__set_segment()
+        self.chunks = make_chunks(self.seg, self.chunk_ms)
+        self.chunk_count = 0
         self.__set_stream()
-        chunk_count = 0
-        self.chunks = make_chunks(self.seg, 100)
-        
+        self.duration = self.seg.duration_seconds  # 再生時間
+        self.rate = self.seg.frame_rate  # サンプリングレート
+        self.channels = self.seg.channels  # (1:mono, 2:stereo)
+        self.sample_width = self.seg.sample_width  # byte
+
         while not self.is_stoped:
-            if chunk_count >= len(self.chunks):  # 最後まで再生して終了
+            if self.chunk_count >= len(self.chunks):  # 最後まで再生して終了
                 self.play_count += 1  # next song
                 break
             
             with self.pause_condition:
-                data = (self.chunks[chunk_count])._data
-                chunk_count += 1
+                chunk = self.chunks[self.chunk_count]
+                data = chunk._data
+                self.chunk_count += 1
+                self.db = chunk.dBFS
+                self.progress = self.chunk_count/len(self.chunks)
                 self.stream.write(data)
                 
                 while self.is_paused:
@@ -132,9 +159,10 @@ class Song(Thread):
                     # ALSA lib pcm.c:8526:(snd_pcm_recover) underrun occurred
                     self.pause_condition.wait()
                     self.stream.start_stream()  # resume
-
-        self.stream.close()  # terminate the stream
         
+        self.stream.close()  # terminate the stream
+
+
     def run(self):
         # loop playlist
         while self.play_count < len(self.playlist) \
@@ -148,6 +176,13 @@ class Song(Thread):
         self.p.terminate()  # terminate the portaudio session
 
 
+def make_progressbar(progress):
+    # progress [0, 1]
+    num = 10
+    p = int(progress*100//num)
+    return '=' * p + ' ' * (10 - p)
+
+    
 if __name__ == "__main__":
     
     home = str(Path.home())  # ~は使えない
@@ -156,28 +191,29 @@ if __name__ == "__main__":
     tags = FLAC(file_name1)
     print(tags)
     print(tags['title'][-1])
-    #seg = pydub.AudioSegment.from_file(file_name, format='flac')
+    #seg = pydub.AudioSegment.from_file(file_name1, format='flac')
     #play(seg)
-    
-    # with this logic there is a short gap b/w files - os time to process,
-    # trying to shorten gap by removing
-    # 1 second from sleep time... works ok but will be system status 
-    # dependent and may not work across runs??
-    # Better would be to kill each tread when self._is_paused = True. 
-    # I have a bunch of active threads piling up
+        
     playlist = [file_name1, file_name2]
     song = Song(playlist)
     song.play()
+    time.sleep(1)
+    duration, rate, channels, sample_width = song.get_info()
+    print(song.duration, song.rate, song.channels, song.sample_width)
+    while True:
+        time.sleep(0.02)
+        progress_bar = make_progressbar(song.progress)
+        print(f'\r[{progress_bar}] {song.progress*100:5.2f}%', end='')
+        
     time.sleep(5)
     print('volume')
-    song.volume(10)
-    song.seg += 15
+    song.volume(1)
+    time.sleep(180)
+    print('volume')
+    song.volume(1)
     time.sleep(5)
     print('volume')
-    song.volume(10)
-    time.sleep(5)
-    print('volume')
-    song.volume(-20)
+    song.volume(-1)
     time.sleep(5)
     print('pause')
     song.pause()
