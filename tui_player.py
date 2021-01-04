@@ -6,7 +6,7 @@ import curses
 from curses import wrapper
 from curses import ascii
 
-from play import Song, make_progressbar
+from play import Song, make_progressbar, db_visualizer
 from get_files import get_files
 
 import locale
@@ -150,6 +150,7 @@ class TuiAudioPlayer:
             album = self.song.album
             artist = self.song.artist
             db = self.song.db
+            max_db = self.song.max_db
             progress = self.song.progress
             progress_bar = make_progressbar(progress)
             time_elapsed = int(self.song.chunk_count * self.song.chunk_ms / 1000)
@@ -162,15 +163,16 @@ class TuiAudioPlayer:
                 f"    Channels: {channels} @ {channels*8}bit\t" \
                 f"Artist: {artist}"
 
-            info2 = f"\r[{progress_bar}] {progress*100:5.2f} % " \
+            info2 = f"\r[{progress_bar}] {progress*100:5.2f}% " \
                 f"{timedelta(seconds=time_elapsed)} " \
-                f"[{timedelta(seconds=time_left)}]"
+                f"[{timedelta(seconds=time_left)}] " \
+                f"[{db_visualizer(db, max_db)}]"
 
             self.bottom_win.erase()
             time.sleep(0.25)
-            self.bottom_win.addstr(0, 1,
+            self.bottom_win.addstr(0, 0,
                                    info1)
-            self.bottom_win.addstr(3, 1, info2)
+            self.bottom_win.addstr(3, 0, info2)
             self.bottom_win.refresh()
         
     def draw_options(self, state):

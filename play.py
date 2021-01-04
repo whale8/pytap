@@ -42,6 +42,7 @@ class Song(Thread):
         self.is_terminated = True
         self.progress = 0
         self.db = 0
+        self.max_db = 0
         self.duration = 0
         self.rate = 0
         self.channels = 0
@@ -125,13 +126,22 @@ class Song(Thread):
         return (self.progress, self.db)
     
     def __set_segment(self):
+
         self.play_number = self.play_count % len(self.playlist)
         f = self.playlist[self.play_number]
         tags = FLAC(f)
-        self.title = tags['title'][-1]
-        self.album = tags['album'][-1]
-        self.artist = tags['artist'][-1]
-        self.track = tags['tracknumber']
+        
+        def __get_attribute(key):
+            try:
+                attr = tags[key][-1]
+            except KeyError:
+                attr = None
+            return attr
+        
+        self.title = __get_attribute('title')  # tags.get(key, None)もあり
+        self.album = __get_attribute('album')
+        self.artist = __get_attribute('artist')
+        self.track = __get_attribute('tracknumber')
         self.seg = AudioSegment.from_file(f)
 
     def __set_stream(self):
@@ -151,6 +161,7 @@ class Song(Thread):
         self.rate = self.seg.frame_rate  # サンプリングレート
         self.channels = self.seg.channels  # (1:mono, 2:stereo)
         self.sample_width = self.seg.sample_width  # byte
+        self.max_db = self.seg.max_dBFS
 
         while not self.is_stoped:
             if self.chunk_count >= len(self.chunks):  # 最後まで再生して終了
@@ -193,7 +204,23 @@ def make_progressbar(progress):
     p = int(progress*100//num)
     return '=' * p + ' ' * (10 - p)
 
-    
+def spectrogram():
+    pass
+
+def db_visualizer(db, max_db):
+    count = 10
+    db -= max_db
+    db += count * 10
+    if db > 0:
+        q, mod = divmod(db, 10)
+        if mod > 5:
+            v = "=" * int(q) + "-" + " " * (count-1-int(q))
+        else:
+            v = "=" * int(q) + " " * (count-int(q))
+    else:
+        v = " " * count
+    return v
+
 if __name__ == "__main__":
     
     home = str(Path.home())  # ~は使えない
@@ -223,7 +250,8 @@ if __name__ == "__main__":
         time_left = int(song.duration) - time_elapsed
         print(f"\r[{progress_bar}] {song.progress*100:5.2f} % " +
               f"{timedelta(seconds=time_elapsed)} " +
-              f"[{timedelta(seconds=time_left)}]", end="")
+              f"[{timedelta(seconds=time_left)}] " +
+              f"{db_visualizer(song.db, song.max_db)}", end="")
         
     time.sleep(5)
     print("volume")
