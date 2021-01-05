@@ -5,12 +5,14 @@ from threading import Thread, Condition, Lock
 
 from pydub import AudioSegment
 from pydub.utils import make_chunks
-from pyaudio import PyAudio
+from pyaudio import PyAudio, paInt8, paInt16, paInt24, paInt32
 from mutagen.flac import FLAC
 
 # alsa message handling
 from ctypes import (CFUNCTYPE, c_char_p, c_int, cdll) 
 from contextlib import contextmanager
+
+from get_files import get_attribute
 
 
 ERROR_HANDLER_FUNC = CFUNCTYPE(None, c_char_p, c_int, c_char_p, c_int, c_char_p)
@@ -46,6 +48,7 @@ class Song(Thread):
         self.duration = 0
         self.rate = 0
         self.channels = 0
+        self.sample_width = 0
         self.title = ""
         self.artist = ""
         self.album = ""
@@ -131,23 +134,40 @@ class Song(Thread):
         f = self.playlist[self.play_number]
         tags = FLAC(f)
         
-        def __get_attribute(key):
-            try:
-                attr = tags[key][-1]
-            except KeyError:
-                attr = None
-            return attr
-        
-        self.title = __get_attribute('title')  # tags.get(key, None)もあり
-        self.album = __get_attribute('album')
-        self.artist = __get_attribute('artist')
-        self.track = __get_attribute('tracknumber')
+        self.title = get_attribute(tags, 'title')  # tags.get(key, None)もあり
+        self.album = get_attribute(tags, 'album')
+        self.artist = get_attribute(tags, 'albumartist')
+        if self.artist == None:
+            self.artist = get_attribute(tags, 'artist')
+        self.track = get_attribute(tags, 'tracknumber')
         self.seg = AudioSegment.from_file(f)
 
     def __set_stream(self):
+        # format は portaudio の定数
+        # (paInt8=16, paInt16=8, paInt24=4, paInt32=2, paFloat32=1)のどれか
+        # pydub.AudioSegment.sample_width も量子化ビット数を返す
+        # (1=8bit, 2=16bit, 3?, 4=32bit)
+        # PyAudio.get_format_from_width は paInt32 を返さない
+        # 手持ちの音源で 32bit-float がないので即時療法で対処
+        # https://github.com/jleb/pyaudio/blob/0109cc46cac6a3c404050f4ba11752e51aeb1fda/src/pyaudio.py#L215
+        # issue 案件な気がする
+        def get_format_from_width(width):
+            if width == 1:
+                return paInt8  # = 16
+            elif width == 2:
+                return paInt16  # = 8
+            elif width == 3:
+                return paInt24  # = 4
+            elif width == 4:
+                return paInt32  # = 2
+            else:
+                raise ValueError(f"Invalid width {width}")
+        
         self.stream = self.p.open(format
-                                  =self.p.get_format_from_width(
+                                  =get_format_from_width(
                                       self.seg.sample_width),
+                                  #=self.p.get_format_from_width(
+                                  #    self.seg.sample_width),
                                   channels=self.seg.channels,
                                   rate=self.seg.frame_rate,
                                   output=True)#, stream_callback=self.callback)
@@ -160,7 +180,7 @@ class Song(Thread):
         self.duration = self.seg.duration_seconds  # 再生時間
         self.rate = self.seg.frame_rate  # サンプリングレート
         self.channels = self.seg.channels  # (1:mono, 2:stereo)
-        self.sample_width = self.seg.sample_width  # byte
+        self.sample_width = self.seg.sample_width  # byte (1:8bit, 2:16bit ...)
         self.max_db = self.seg.max_dBFS
 
         while not self.is_stoped:
@@ -231,17 +251,23 @@ if __name__ == "__main__":
     #print(tags['title'][-1])
     #seg = pydub.AudioSegment.from_file(file_name1, format='flac')
     #play(seg)
-        
-    playlist = [file_name1, file_name2]
+
+    input_file = "/media/whale/Extreme SSD/Kevin Penkin/「メイドインアビス」O．S．T．/TVアニメ メイドインアビス オリジナルサウンドトラッ_01_Made in Abyss.flac"
+    playlist = [input_file, file_name1, file_name2]
     song = Song(playlist)
     song.play()
     time.sleep(1)
     duration, rate, channels, sample_width = song.get_info()
+    print(song.sample_width)
+    print(1, song.p.get_format_from_width(1))
+    print(2, song.p.get_format_from_width(2))
+    print(3, song.p.get_format_from_width(3))
+    print(4, song.p.get_format_from_width(4))
     print(f"    Duration: {timedelta(seconds=int(song.duration))}\t"
           f" Title: {song.title}\n"
           f"Samplingrate: {song.rate} Hz\t"
           f" Album: {song.album}\n"
-          f"    Channels: {song.channels} @ {song.channels*8}bit\t"
+          f"    Channels: {song.channels} @ {song.sample_width*8}bit\t"
           f"Artist: {song.artist}")
     while True:
         time.sleep(0.02)

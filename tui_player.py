@@ -2,12 +2,14 @@ import sys
 import time
 from datetime import timedelta
 from threading import Thread
+from math import ceil
 import curses
 from curses import wrapper
 from curses import ascii
 
 from play import Song, make_progressbar, db_visualizer
 from get_files import get_files
+from utils import TextWrapper
 
 import locale
 locale.setlocale(locale.LC_ALL, '')
@@ -63,8 +65,8 @@ class TuiAudioPlayer:
         artist_width = self.max_col // 3
         album_width = self.max_col // 3
         song_width = self.max_col - artist_width - album_width
-        bottom_height = 6
-        height = self.max_row - bottom_height
+        self.bottom_height = 6
+        height = self.max_row - self.bottom_height
         
         
         self.artist_win = curses.newwin(height, artist_width - 1,
@@ -77,7 +79,8 @@ class TuiAudioPlayer:
                                      1, 0)
         self.border2 = curses.newwin(height, album_width,
                                      1, artist_width)
-        self.bottom_win = curses.newwin(bottom_height - 1, self.max_col, height + 2,  0)
+        self.bottom_win = curses.newwin(self.bottom_height - 1, self.max_col,
+                                        height + 2,  0)
 
         self.border1.border(" ", 0, " ", " ",
                             " ", curses.ACS_VLINE, " ", curses.ACS_VLINE)
@@ -146,6 +149,7 @@ class TuiAudioPlayer:
             duration = self.song.duration
             rate = self.song.rate
             channels = self.song.channels
+            sample_width = self.song.sample_width
             title = self.song.title
             album = self.song.album
             artist = self.song.artist
@@ -160,7 +164,7 @@ class TuiAudioPlayer:
                 f" Title: {title}\n" \
                 f"Samplingrate: {rate} Hz\t" \
                 f" Album: {album}\n" \
-                f"    Channels: {channels} @ {channels*8}bit\t" \
+                f"    Channels: {channels} @ {sample_width*8}bit\t" \
                 f"Artist: {artist}"
 
             info2 = f"\r[{progress_bar}] {progress*100:5.2f}% " \
@@ -178,14 +182,25 @@ class TuiAudioPlayer:
     def draw_options(self, state):
         attention_window = self.windows[state]
         attention_options = self.displayed_options[state]
-        for i, option in enumerate(attention_options):
-            if self.selected_rows[state] == i:
+        rows_per_page, max_col = attention_window.getmaxyx()
+        rows_per_page -= 2
+        w = TextWrapper(width=max_col-9)  # minus error
+        max_page = ceil(len(attention_options) / rows_per_page)
+        q, mod = divmod(self.selected_rows[state], rows_per_page)
+        start = q*rows_per_page
+        end = start + rows_per_page
+        attention_window.erase()
+        top_message = f"page {q+1} / {max_page}"
+        attention_window.addstr(0, max_col-len(top_message), top_message)
+        
+        for i, option in enumerate(attention_options[start:end]):
+            if i == mod:
                 attention_window.addstr(i + 1, 1,
-                                        f"{i+1:3}: {option}",
+                                        f"{i+1:3}: {w.shorten(option)}",
                                         self.hilite_color)
             else:
                 attention_window.addstr(i + 1, 1,
-                                        f"{i+1:3}: {option}",
+                                        f"{i+1:3}: {w.shorten(option)}",
                                         self.normal_color)
 
     def run(self):
@@ -243,6 +258,7 @@ class TuiAudioPlayer:
             self.draw_options(self.state)
 
             max_y, max_x = attention_window.getmaxyx()
+            """
             if input_key is not None:
                 attention_window.addstr(max_y - 5, max_x - 5,
                                         f"state {self.state:3}")
@@ -253,7 +269,7 @@ class TuiAudioPlayer:
                 attention_window.addstr(max_y - 2, max_x - 5,
                                         f"2 {self.selected_rows[2]:3}")
                 attention_window.refresh()
-
+            """
             input_key = attention_window.getch()
 
             if input_key in self.DOWN_KEYS:
