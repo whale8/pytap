@@ -8,7 +8,7 @@ from curses import wrapper
 from curses import ascii
 
 from play import Song, make_progressbar, db_visualizer
-from get_files import get_files
+from get_files import get_music_tree
 from utils import TextWrapper
 
 import locale
@@ -17,17 +17,14 @@ locale.setlocale(locale.LC_ALL, '')
 
 class TuiAudioPlayer:
 
-    def __init__(self, stdscr, artists, albums, songs):
+    def __init__(self, stdscr, music_tree):
         self.stdscr = stdscr
-        self.artists = artists  # dict
-        self.albums = albums  # dict
-        self.songs = songs
-        self.artists_list = list(self.artists.keys())
+        self.music_tree = music_tree  # 4 layer dict, (artist, album, title, file_path)
+        self.artists_list = list(self.music_tree.keys())
         
         self.state = 0  # [artist, album, song]
         self.selected_rows = [0, 0, 0]  # [artist, album, song]
         self.selected_names = [None, None, None]
-        self.options = [{None:self.artists_list}, self.artists, self.albums]
         self.displayed_options = [self.artists_list, None, None]
         self.playing = False
         self.is_loop = False
@@ -96,6 +93,13 @@ class TuiAudioPlayer:
         self.album_win.keypad(1)
         self.song_win.keypad(1)
         self.bottom_win.keypad(1)
+        
+        # 変更があった場合に更新する, 画面が崩れることを防止
+        # パフォーマンスは低下
+        self.artist_win.immedok(1)
+        self.album_win.immedok(1)
+        self.song_win.immedok(1)
+        #self.bottom_win.immedok(1)
 
     def resize(self):
         is_resized = curses.is_term_resized(self.max_row, self.max_col)
@@ -167,13 +171,13 @@ class TuiAudioPlayer:
                 f"    Channels: {channels} @ {sample_width*8}bit\t" \
                 f"Artist: {artist}"
 
-            info2 = f"\r[{progress_bar}] {progress*100:5.2f}% " \
+            info2 = f"\r[{progress_bar}] {progress*100:4.1f}% " \
                 f"{timedelta(seconds=time_elapsed)} " \
                 f"[{timedelta(seconds=time_left)}] " \
                 f"[{db_visualizer(db, max_db)}]"
 
             self.bottom_win.erase()
-            time.sleep(0.25)
+            time.sleep(0.5)
             self.bottom_win.addstr(0, 0,
                                    info1)
             self.bottom_win.addstr(3, 0, info2)
@@ -189,8 +193,9 @@ class TuiAudioPlayer:
         q, mod = divmod(self.selected_rows[state], rows_per_page)
         start = q*rows_per_page
         end = start + rows_per_page
-        attention_window.erase()
         top_message = f"page {q+1} / {max_page}"
+        attention_window.erase()  # 画面が崩れてもなおらない
+        # attention_window.clear()  # なおるけど，ちらつく
         attention_window.addstr(0, max_col-len(top_message), top_message)
         
         for i, option in enumerate(attention_options[start:end]):
@@ -211,6 +216,10 @@ class TuiAudioPlayer:
         self.border1.bkgd(self.border_color)
         self.refresh()
 
+        # 曲がひとつもない場合
+        if len(self.artists_list) == 0:
+            self.set_dir()
+        
         # main loop
         # stateの変更は全部ここでする
         while True:
@@ -220,14 +229,18 @@ class TuiAudioPlayer:
                 selected_name = self.selected_names[self.state]
 
                 if self.state == 2:
+                    selected_artist = self.selected_names[0]
+                    selected_album = self.selected_names[1]
+                    songs = self.music_tree[selected_artist][selected_album]
+
                     if not self.playing:
-                        playlist = [self.songs[selected_name]]
+                        playlist = [songs[selected_name]]
                         self.song = Song(playlist)
                         self.song.play()
                     else:
                         self.playing = False  # terminate p
                         self.song.pause()
-                        playlist = [self.songs[selected_name]]
+                        playlist = [songs[selected_name]]
                         self.song = Song(playlist)
                         self.song.play()
                     
@@ -238,8 +251,15 @@ class TuiAudioPlayer:
                         
                 else:
                     self.state += 1
-                    self.displayed_options[self.state] \
-                        = self.options[self.state][selected_name]
+                    if self.state == 1:
+                        self.displayed_options[self.state] \
+                            = list(self.music_tree[selected_name].keys())
+                    elif self.state == 2:
+                        selected_artist = self.selected_names[0]
+                        songs = self.music_tree[selected_artist][selected_name]
+                        self.displayed_options[self.state] = list(songs)
+                    #self.displayed_options[self.state] \
+                    #    = self.options[self.state][selected_name]
                 
             else:
                 self.selected_rows[self.state] = 0
@@ -255,21 +275,10 @@ class TuiAudioPlayer:
         while input_key not in self.ENTER_KEYS + self.BACK_KEYS:
 
             self.resize()
-            self.draw_options(self.state)
+            for i in range(self.state + 1):
+                self.draw_options(i)
 
             max_y, max_x = attention_window.getmaxyx()
-            """
-            if input_key is not None:
-                attention_window.addstr(max_y - 5, max_x - 5,
-                                        f"state {self.state:3}")
-                attention_window.addstr(max_y - 4, max_x - 5,
-                                        f"0 {self.selected_rows[0]:3}")
-                attention_window.addstr(max_y - 3, max_x - 5,
-                                        f"1 {self.selected_rows[1]:3}")
-                attention_window.addstr(max_y - 2, max_x - 5,
-                                        f"2 {self.selected_rows[2]:3}")
-                attention_window.refresh()
-            """
             input_key = attention_window.getch()
 
             if input_key in self.DOWN_KEYS:
@@ -296,6 +305,12 @@ class TuiAudioPlayer:
 
         return input_key
 
+    def set_dir(self):
+        """
+        setting.ini を設定する
+        """
+        pass
+
     def finish(self):
         # 終了処理
         if self.song != None:
@@ -306,8 +321,8 @@ class TuiAudioPlayer:
         curses.endwin()
 
 def main(stdscr):
-    artists, albums, songs = get_files()
-    tap = TuiAudioPlayer(stdscr, artists, albums, songs)
+    music_tree = get_music_tree()
+    tap = TuiAudioPlayer(stdscr, music_tree)
     tap.run()
     
 if __name__ == "__main__":

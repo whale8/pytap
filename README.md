@@ -7,7 +7,7 @@ cursesで何か作る
 - そこ画面の画面サイズ変更対応  
 - 画面描画が不安定  
 - 検索結果に出ないファイルがある  
-
+- 検索結果0でバグ  
 
 # 参考  
 - https://wiki.archlinux.jp/index.php/Advanced_Linux_Sound_Architecture/%E3%83%88%E3%83%A9%E3%83%96%E3%83%AB%E3%82%B7%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0
