@@ -1,2 +1,3 @@
 __pycache__/
-setting.ini
+app/setting.ini
+app/__pycache__/

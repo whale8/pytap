@@ -8,7 +8,7 @@ from curses import wrapper
 from curses import ascii
 
 from play import Song, make_progressbar, db_visualizer
-from get_files import get_music_tree
+from get_files import get_music_tree, MusicFileNotFoundError
 from utils import TextWrapper
 
 import locale
@@ -17,9 +17,20 @@ locale.setlocale(locale.LC_ALL, '')
 
 class TuiAudioPlayer:
 
-    def __init__(self, stdscr, music_tree):
+    def __init__(self, stdscr):
         self.stdscr = stdscr
-        self.music_tree = music_tree  # 4 layer dict, (artist, album, title, file_path)
+        self.music_tree = get_music_tree()
+        # 4 layer dict, (artist, album, title, file_path)
+
+        # いつか書く, curses.textpad.Textboxでsetting.iniにディレクトリを追加する
+        #while not self.music_tree:  # if empty
+        #     try:
+        #         self.music_tree = get_music_tree()
+        #     except MusicFileNotFoundError:  # 音楽ファイルが見つからない
+        #         self.set_dir()  # 音楽ファイルがあるディレクトリを設定
+        #     except KeyError:
+        #         self.set_dir()  # DEFAULT, MUSIC_ROOTが設定されていない
+                 
         self.artists_list = list(self.music_tree.keys())
         
         self.state = 0  # [artist, album, song]
@@ -109,16 +120,18 @@ class TuiAudioPlayer:
             album_width = self.max_col // 3
             song_width = self.max_col - artist_width - album_width
             height = self.max_row - 3
+            height = self.max_row - self.bottom_height
             self.stdscr.resize(self.max_row, self.max_col)
             self.artist_win.resize(height, artist_width - 1)
             self.album_win.resize(height, album_width - 1)
             self.song_win.resize(height, song_width)
+            self.bottom_win.resize(self.bottom_height - 1, self.max_col)
             self.border1.resize(height, artist_width)
             self.border2.resize(height, album_width)
 
+            self.border2.mvwin(1, artist_width)
             self.album_win.mvwin(1, artist_width)
             self.song_win.mvwin(1, artist_width + album_width)
-            self.border2.mvwin(1, artist_width)
 
             self.clear()
             for state in range(self.state):
@@ -178,8 +191,7 @@ class TuiAudioPlayer:
 
             self.bottom_win.erase()
             time.sleep(0.5)
-            self.bottom_win.addstr(0, 0,
-                                   info1)
+            self.bottom_win.addstr(0, 0, info1)
             self.bottom_win.addstr(3, 0, info2)
             self.bottom_win.refresh()
         
@@ -215,10 +227,6 @@ class TuiAudioPlayer:
         self.border2.bkgd(self.border_color)
         self.border1.bkgd(self.border_color)
         self.refresh()
-
-        # 曲がひとつもない場合
-        if len(self.artists_list) == 0:
-            self.set_dir()
         
         # main loop
         # stateの変更は全部ここでする
@@ -232,18 +240,17 @@ class TuiAudioPlayer:
                     selected_artist = self.selected_names[0]
                     selected_album = self.selected_names[1]
                     songs = self.music_tree[selected_artist][selected_album]
+                    selected_song = songs[selected_name]
+                    playlist = list(songs.values())
+                    sorted_playlist = playlist[playlist.index(selected_song):] \
+                        + playlist[:playlist.index(selected_song)]
 
-                    if not self.playing:
-                        playlist = [songs[selected_name]]
-                        self.song = Song(playlist)
-                        self.song.play()
-                    else:
+                    if self.playing:
                         self.playing = False  # terminate p
                         self.song.pause()
-                        playlist = [songs[selected_name]]
-                        self.song = Song(playlist)
-                        self.song.play()
-                    
+
+                    self.song = Song(sorted_playlist)
+                    self.song.play()
                     self.playing = True
                     self.p = Thread(target=self.render_bottom)
                     self.p.setDaemon(True)
@@ -309,6 +316,12 @@ class TuiAudioPlayer:
         """
         setting.ini を設定する
         """
+        win = curses.newwin(10, 10, 2, 100)
+        tb = curses.textpad.Textbox(win)
+        text = tb.edit()
+        win.addstr(4, 1, text.encode('utf-8'))
+        win.refresh()
+        win.getch()
         pass
 
     def finish(self):
@@ -321,8 +334,7 @@ class TuiAudioPlayer:
         curses.endwin()
 
 def main(stdscr):
-    music_tree = get_music_tree()
-    tap = TuiAudioPlayer(stdscr, music_tree)
+    tap = TuiAudioPlayer(stdscr)
     tap.run()
     
 if __name__ == "__main__":

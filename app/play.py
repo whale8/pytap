@@ -243,17 +243,9 @@ def db_visualizer(db, max_db):
 
 if __name__ == "__main__":
     
-    home = str(Path.home())  # ~は使えない
-    file_name1 = home + "/Music/大貫妙子＆坂本龍一/UTAU/03 - 大貫妙子＆坂本龍一 - ３びきのくま.flac"
-    file_name2 = home + "/Music/大貫妙子＆坂本龍一/UTAU/04 - 大貫妙子＆坂本龍一 - 赤とんぼ.flac"
-    #tags = FLAC(file_name1)
-    #print(tags)
-    #print(tags['title'][-1])
-    #seg = pydub.AudioSegment.from_file(file_name1, format='flac')
-    #play(seg)
-
-    input_file = "/media/whale/Extreme SSD/Kevin Penkin/「メイドインアビス」O．S．T．/TVアニメ メイドインアビス オリジナルサウンドトラッ_01_Made in Abyss.flac"
-    playlist = [input_file, file_name1, file_name2]
+    input_file = input()
+    
+    playlist = [input_file]
     song = Song(playlist)
     song.play()
     time.sleep(1)
